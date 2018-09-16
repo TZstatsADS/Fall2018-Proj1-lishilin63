@@ -111,12 +111,18 @@ ggplot(hm_data, aes(x=factor(1), fill=predicted_category)) +
   coord_polar("y")
 ```
 Without subgrouping the hm_data, we could see generally a lot of people's happy moments come from achievements and affections. For example,
-Achievements - I made a new recipe for peasant bread, and it came out spectacular!
-             - I was shorting Gold and made $200 from the trade.
-             - Managed to get the final trophy in a game I was playing.
-Affections - I went on a successful date with someone I felt sympathy and connection with.
-           - I was happy when my son got 90% marks in his examination
-           - I went with grandchildren to butterfly display at Crohn Conservatory
+
+Achievements:
+
+  - I made a new recipe for peasant bread, and it came out spectacular!
+  - I was shorting Gold and made $200 from the trade.
+  - Managed to get the final trophy in a game I was playing.
+
+Affections:
+
+  - I went on a successful date with someone I felt sympathy and connection with.
+  - I was happy when my son got 90% marks in his examination
+  - I went with grandchildren to butterfly display at Crohn Conservatory
 
 Other happy moments also come from bonding, enjoy_the_moment and leisure which have relative smaller proportions. Nevertheless, the exercise and nature appears the lowest frequency among all the happy moments in the HappyDB.
 
@@ -186,7 +192,7 @@ top_terms_by_topic_tfidf <- function(text_df, text_column, group_column, plot = 
 ```
 
 
-## Informative descriptive words by gender
+#### Informative descriptive words by gender
 ```{r}
 top_terms_by_topic_tfidf(text_df = hm_data, # dataframe
                          text_column = text, # column with text
@@ -195,7 +201,7 @@ top_terms_by_topic_tfidf(text_df = hm_data, # dataframe
 ```
 From the extraction of the most frequently used terms by TF-IDF, We could directly observe that both males and females love pets (puppy) and they are both happy about childhood. While Females feel very happy about something in photos and males have fun moments with colleagues, with the key words extraction from the processed text, we could not tell an evident difference between males and females happy moments.
 
-## Informative descriptive words by age group
+#### Informative descriptive words by age group
 Divide ages to groups
 ```{r,warning=FALSE}
 library(data.table)
@@ -227,7 +233,7 @@ ggplot(data=hm_data, aes(x=predicted_category,fill = agegroups)) +
 In the bar chart, we could see that the happyDB survey collects a majority of people whose ages are between 20 to 40 years old. The happy moments are not evenly distributed among our age groups. Therefore, some of the top-words extracted (eg. 60+ age group) might not represent accurately the happy topics people in that age groups are talking.
 
 
-## Informative descriptive words by marital
+#### Informative descriptive words by marital
 ```{r}
 top_terms_by_topic_tfidf(text_df = hm_data, 
                          text_column = text, 
@@ -242,7 +248,7 @@ ggplot(data=hm_data, aes(x=predicted_category,fill = marital)) +
 ```
 In the bar chart, we could see that generally people in each marital status group have similar proportion distribution in the predicted category. One interesting notice is that married couples have a larger proportion in affection than achievement. It makes sense that married people tend to have happy moments with their spouse.
 
-## Informative descriptive words by parenthood
+#### Informative descriptive words by parenthood
 ```{r}
 top_terms_by_topic_tfidf(text_df = hm_data, 
                          text_column = text, 
@@ -264,11 +270,13 @@ The EDA of the happyDB just scratch the surface of people's happy moments. A lot
 Lastly, I also find some moments are worth reading especially about "Boss" and "someone". I listed several of them below.
 
 Boss:
+
 - My current boss told me how much she is going to miss me and my work etiquette after I graduate and can no longer work for her at the end of this quarter.
 - My boss give me bonus as Motorcycle its a very happiest moment for me.
 - My boss randomly complimented me on a good job I've been doing lately.
 
 Someone:
+
 - On the train this morning, someone told me I had a nice smile.
 - Someone who I admire in my school program told me that they thought I was very intelligent, warm, and funny.
 - Someone at the store gave me fifty cents to cover the difference in money I didn't have from forgetting my wallet at home.
