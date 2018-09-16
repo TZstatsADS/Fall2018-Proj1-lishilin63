@@ -136,7 +136,7 @@ datatable(hm_data)
 ### Exporting the processed text data into a CSV file
 
 ```{r export data}
-write_csv(hm_data, "../output/processed_moments.csv")
+write_csv(hm_data, "processed_moments.csv")
 ```
 
 The final processed data is ready to be used for any kind of analysis.

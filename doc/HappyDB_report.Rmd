@@ -1,0 +1,237 @@
+---
+title: "HappyDB_report"
+author: "Shilin Li (sl4261)"
+date: "9/11/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse) # general utility & workflow functions
+library(tidytext) # tidy implimentation of NLP methods
+library(topicmodels) # for LDA topic modelling 
+library(tm) # general text mining functions, making document term matrixes
+# library(SnowballC) # for stemming
+```
+
+## Read the data
+```{r}
+hm_data <- read_csv("~/Documents/GitHub/Fall2018-Proj1-lishilin63/data/rit-public-HappyDB-b9e529e/happydb/data/cleaned_hm.csv")
+
+demographic_data <- read_csv("~/Documents/GitHub/Fall2018-Proj1-lishilin63/data/rit-public-HappyDB-b9e529e/happydb/data/demographic.csv")
+```
+
+This project mainly focuses on the exploration data analysis on the HappyDB dataset. The goal of the report is finding interesting pattern among people's happy moments. In the report, I will focus on the topic difference in people regarding gender, marital status, parenthood, and age groups. Similarities and differences in topics will be discussed.
+
+## Preliminary cleanning hm_data text
+I used a common stopword list in Kaggle (https://www.kaggle.com/rtatman/stopword-lists-for-19-languages#englishST.txt) to exclude these words appearing in the hm_data. Also, since our data are mostly related to happy moments, I also add words "happy", "happier", "happiest" etc. in the stopwords list.
+
+The cleaning process also references the pre-processing document shared in class 
+```{r text processing in tm}
+# We clean the text by converting all the letters to the lower case, and removing punctuation, numbers, empty words and extra white space.
+corpus <- VCorpus(VectorSource(hm_data$cleaned_hm))%>%
+  tm_map(content_transformer(tolower))%>%
+  tm_map(removePunctuation)%>%
+  tm_map(removeNumbers)%>%
+  tm_map(removeWords, character(0))%>%
+  tm_map(stripWhitespace)
+
+# Stemming words and converting tm object to tidy object.
+# Stemming reduces a word to its word *stem*. We stem the words here and then convert the "tm" object to a "tidy" object for much faster processing.
+stemmed <- tm_map(corpus, stemDocument) %>%
+  tidy() %>%
+  select(text)
+
+# Creating tidy format of the dictionary to be used for completing stems
+# We also need a dictionary to look up the words corresponding to the stems.
+dict <- tidy(corpus) %>%
+  select(text) %>%
+  unnest_tokens(dictionary, text)
+
+# Removing stopwords that don't hold any significant information for our data set
+# We remove stopwords provided by the "tidytext" package and also add custom stopwords in context of our data.
+data("stop_words")
+
+word <- c("happy","ago","yesterday","lot","today","months","month",
+                 "happier","happiest","last","week","past","day","time","positive","experience","temple","favorite","extremely","tonight","function","movement")
+
+stop_words <- stop_words %>%
+  bind_rows(mutate(tibble(word), lexicon = "updated"))
+
+# Combining stems and dictionary into the same tibble
+# Here we combine the stems and the dictionary into the same "tidy" object.
+completed <- stemmed %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(stems, text) %>%
+  bind_cols(dict) %>%
+  anti_join(stop_words, by = c("dictionary" = "word"))
+
+# Stem completion
+# Lastly, we complete the stems by picking the corresponding word with the highest frequency.
+completed <- completed %>%
+  group_by(stems) %>%
+  count(dictionary) %>%
+  mutate(word = dictionary[which.max(n)]) %>%
+  ungroup() %>%
+  select(stems, word) %>%
+  distinct() %>%
+  right_join(completed) %>%
+  select(-stems)
+
+# Pasting stem completed individual words into their respective happy moments
+# We want our processed words to resemble the structure of the original happy moments. So we paste the words together to form happy moments.
+completed <- completed %>%
+  group_by(id) %>%
+  summarise(text = str_c(word, collapse = " ")) %>%
+  ungroup()
+
+# Keeping a track of the happy moments with their own ID
+hm_data <- hm_data %>%
+  mutate(id = row_number()) %>%
+  inner_join(completed)
+
+head(hm_data)
+```
+The new hm_data has two new columns in which the "text" column is my analysis focus on. It has seperated word or phrase cleaned up with stopwords, and thus more relevant to the happy moments topics. 
+
+I merged hm_data with the demographic_data. In this way, the whole file contains all the information about happy moments regarding age, gender, marital status and parenthood. The inner join process is by wid that each moment is paried by the recorders. Then, we could focus on our interest groups (gender, marital, parenthhood, age)
+```{r}
+hm_data <- hm_data %>%
+  inner_join(demographic_data)
+
+head(hm_data)
+```
+
+```{r}
+ggplot(hm_data, aes(x=factor(1), fill=predicted_category)) + 
+  geom_bar(width = 1) + 
+  coord_polar("y")
+```
+Without subgrouping the hm_data, we could see generally a lot of people's happy moments come from achievements and affections. For example,
+Achievements - I made a new recipe for peasant bread, and it came out spectacular!
+             - I was shorting Gold and made $200 from the trade.
+             - Managed to get the final trophy in a game I was playing.
+Affections - I went on a successful date with someone I felt sympathy and connection with.
+           - I was happy when my son got 90% marks in his examination
+           - I went with grandchildren to butterfly display at Crohn Conservatory
+
+Other happy moments also come from bonding, enjoy_the_moment and leisure which have relative smaller proportions. Nevertheless, the exercise and nature appears the lowest frequency among all the happy moments in the HappyDB.
+
+
+## Supervised topic modeling with TF-IDF (https://www.kaggle.com/rtatman/nlp-in-r-topic-modelling)
+
+In HappyDB, we have labeled data, so I used supervised topic modeling with TF-IDF (term frequency-inverse document frequency). The general idea behind how TF-IDF works is this:
+
+- Words that are very common in a specific document are probably important to the topic of that document
+- Words that are very common in all documents probably aren't important to the topics of any of them
+
+So a term will recieve a high weight if it's common in a specific document and also uncommon across all documents. One of the advantage of using TF-IDF is it helps to remove additional stopwords that sometimes we neglect during the pre-processing.
+```{r}
+# function that takes in a dataframe and the name of the columns
+# with the document texts and the topic labels. If plot is set to
+# false it will return the tf-idf output rather than a plot.
+top_terms_by_topic_tfidf <- function(text_df, text_column, group_column, plot = T){
+    # name for the column we're going to unnest_tokens_ to
+    # (you only need to worry about enquo stuff if you're
+    # writing a function using using tidyverse packages)
+    group_column <- enquo(group_column)
+    text_column <- enquo(text_column)
+    
+    # get the count of each word in each review
+    words <- text_df %>%
+      unnest_tokens(word, !!text_column) %>%
+      count(!!group_column, word) %>% 
+      ungroup()
+
+    # get the number of words per text
+    total_words <- words %>% 
+      group_by(!!group_column) %>% 
+      summarize(total = sum(n))
+
+    # combine the two dataframes we just made
+    words <- left_join(words, total_words)
+    
+    # get the tf_idf & order the words by degree of relevence
+    tf_idf <- words %>%
+      bind_tf_idf(word, !!group_column, n) %>%
+      select(-total) %>%
+      arrange(desc(tf_idf)) %>%
+      mutate(word = factor(word, levels = rev(unique(word))))
+    
+    if(plot == T){
+        # convert "group" into a quote of a name
+        # (this is due to funkiness with calling ggplot2
+        # in functions)
+        group_name <- quo_name(group_column)
+        
+        # plot the 10 most informative terms per topic
+        tf_idf %>% 
+          group_by(!!group_column) %>% 
+          top_n(10) %>% 
+          ungroup %>%
+          ggplot(aes(word, tf_idf, fill = as.factor(group_name))) +
+          geom_col(show.legend = FALSE) +
+          labs(x = NULL, y = "tf-idf") +
+          facet_wrap(reformulate(group_name), scales = "free") +
+          coord_flip()
+    }else{
+        # return the entire tf_idf dataframe
+        return(tf_idf)
+    }
+}
+```
+
+
+## Informative descriptive words by gender
+```{r}
+top_terms_by_topic_tfidf(text_df = hm_data, # dataframe
+                         text_column = text, # column with text
+                         group_column = gender, # column with topic label
+                         plot = T) # return a plot
+```
+From the extraction of the most frequently used terms by TF-IDF, we might not be able to see a significant difference in happy moments by gender. We could directly see that both males and females love pets (puppy) and they are both happy about childhood. Females feel very happy about something in photos while males have fun moments with colleagues. Therefore, with the key words extraction from the processed text, we could not tell any evident difference in males and females happy moments.
+
+```{r}
+nrow(hm_data[hm_data$gender == "m",])
+nrow(hm_data[hm_data$gender == "f",])
+```
+
+
+```{r}
+ggplot(data=hm_data, aes(x=predicted_category,fill = gender)) +
+    geom_bar(stat="count")
+```
+
+
+
+## Informative descriptive words by marital
+```{r}
+top_terms_by_topic_tfidf(text_df = hm_data, # dataframe
+                         text_column = text, # column with text
+                         group_column = marital, # column with topic label
+                         plot = T) # return a plot
+```
+
+```{r}
+ggplot(data=hm_data, aes(x=predicted_category,fill = marital)) +
+    geom_bar(stat="count")
+```
+
+
+## Informative descriptive words by parenthood
+```{r}
+top_terms_by_topic_tfidf(text_df = hm_data, # dataframe
+                         text_column = text, # column with text
+                         group_column = parenthood, # column with topic label
+                         plot = T) # return a plot
+```
+
+```{r}
+ggplot(data=hm_data, aes(x=predicted_category,fill = parenthood)) +
+    geom_bar(stat="count")
+```
+
+
