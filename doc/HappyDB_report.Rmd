@@ -9,28 +9,33 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r,warning=FALSE}
 library(tidyverse) # general utility & workflow functions
 library(tidytext) # tidy implimentation of NLP methods
+library(tidyr) # tidy implimentation of NLP methods
 library(topicmodels) # for LDA topic modelling 
 library(tm) # general text mining functions, making document term matrixes
-# library(SnowballC) # for stemming
+library(wordcloud) # text mining graph
+library(scales) # jitter plot in ggplot 
+library(data.table) # Manipulate lists and data frames to data table
 ```
 
-## Read the data
-```{r}
+### Read The Data
+This project mainly focuses on the exploration data analysis on the HappyDB dataset. The goal of the report is finding interesting pattern among people's happy moments. In the report, I will focus on the topic difference in people regarding gender, marital status, parenthood, and age groups. Similarities and differences in topics will be discussed.
+
+```{r,warning=FALSE}
 hm_data <- read_csv("~/Documents/GitHub/Fall2018-Proj1-lishilin63/data/cleaned_hm.csv")
 
 demographic_data <- read_csv("~/Documents/GitHub/Fall2018-Proj1-lishilin63/data/demographic.csv")
 ```
 
-This project mainly focuses on the exploration data analysis on the HappyDB dataset. The goal of the report is finding interesting pattern among people's happy moments. In the report, I will focus on the topic difference in people regarding gender, marital status, parenthood, and age groups. Similarities and differences in topics will be discussed.
+### Preliminary Cleanning hm_data Text
+I used a common stopword list in Kaggle (https://www.kaggle.com/rtatman/stopword-lists-for-19-languages#englishST.txt) to exclude these words appearing in the hm_data. Also, since our data are mostly related to happy moments, I also add words "happy", "happier", "happiest" etc. in the stopwords list. The cleaning process also references the pre-processing document shared in class.
 
-## Preliminary cleanning hm_data text
-I used a common stopword list in Kaggle (https://www.kaggle.com/rtatman/stopword-lists-for-19-languages#englishST.txt) to exclude these words appearing in the hm_data. Also, since our data are mostly related to happy moments, I also add words "happy", "happier", "happiest" etc. in the stopwords list.
+The new hm_data has two new columns in which the "text" column is my analysis focus on. It has seperated word or phrase cleaned up with stopwords, and thus more relevant to the happy moments topics. 
 
-The cleaning process also references the pre-processing document shared in class 
-```{r text processing in tm}
+I merged hm_data with the demographic_data. In this way, the whole file contains all the information about happy moments regarding age, gender, marital status and parenthood. The inner join process is by wid that each moment is paried by the recorders. Then, we could focus on our interest groups (gender, marital, parenthhood, age)
+```{r text processing in tm, warning=FALSE}
 # We clean the text by converting all the letters to the lower case, and removing punctuation, numbers, empty words and extra white space.
 corpus <- VCorpus(VectorSource(hm_data$cleaned_hm))%>%
   tm_map(content_transformer(tolower))%>%
@@ -56,7 +61,7 @@ dict <- tidy(corpus) %>%
 data("stop_words")
 
 word <- c("happy","ago","yesterday","lot","today","months","month",
-                 "happier","happiest","last","week","past","day","time","positive","experience","temple","favorite","extremely","tonight","function","movement")
+                 "happier","happiest","last","week","past","day","time","positive","experience","temple","favorite","extremely","tonight","function","movement","promotion")
 
 stop_words <- stop_words %>%
   bind_rows(mutate(tibble(word), lexicon = "updated"))
@@ -95,22 +100,20 @@ hm_data <- hm_data %>%
 
 head(hm_data)
 ```
-The new hm_data has two new columns in which the "text" column is my analysis focus on. It has seperated word or phrase cleaned up with stopwords, and thus more relevant to the happy moments topics. 
 
-I merged hm_data with the demographic_data. In this way, the whole file contains all the information about happy moments regarding age, gender, marital status and parenthood. The inner join process is by wid that each moment is paried by the recorders. Then, we could focus on our interest groups (gender, marital, parenthhood, age)
-```{r}
+```{r, warning=FALSE}
 hm_data <- hm_data %>%
   inner_join(demographic_data)
 
 head(hm_data)
 ```
 
-```{r}
-ggplot(hm_data, aes(x=factor(1), fill=predicted_category)) + 
-  geom_bar(width = 1) + 
-  coord_polar("y")
-```
-Without subgrouping the hm_data, we could see generally a lot of people's happy moments come from achievements and affections. For example,
+### Processed Text Look Up
+The first analysis I did focused on the processed text which shows more relevant words and phrase towards topics. I used VCorpus function to vectorize the processed text and ranked words with frequency. 
+
+From both the word rank and the word palette, "friend","family","life","love","birthday" etc. appears the most frequently in HappyDB and words like "shopping", "dog", "wife", "school" and so on also show up a lot of times. Overall, we could see that a majority of people's happy moments are comming from their friends and family. This indeed implies the general trend of happiness.
+
+Without subgrouping the hm_data, we could see from the pie chart that a great number of people's happy moments come from achievements and affections. For example,
 
 Achievements:
 
@@ -125,17 +128,118 @@ Affections:
   - I went with grandchildren to butterfly display at Crohn Conservatory
 
 Other happy moments also come from bonding, enjoy_the_moment and leisure which have relative smaller proportions. Nevertheless, the exercise and nature appears the lowest frequency among all the happy moments in the HappyDB.
+```{r, warning=FALSE}
+hm_text <- VCorpus(VectorSource(hm_data$text))
+tdm <- TermDocumentMatrix(hm_text)
+m <- as.matrix(tdm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+```
 
+```{r, warning=FALSE}
+set.seed(1234)
+wordcloud(words = d$word, freq = d$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35, 
+          colors= brewer.pal(8, "Dark2"))
+```
 
-## Supervised topic modeling with TF-IDF 
+```{r}
+ggplot(hm_data, aes(x=factor(1), fill=predicted_category)) + 
+  geom_bar(width = 1) + 
+  coord_polar("y")
+```
+
+### Informative Descriptive Words By Gender
+Reference: http://varianceexplained.org/r/tidytext-gender-plots/
+
+Since male and female shares a lot of commmon happy moments, I graphed a most skewed words plot to see the difference between males and females. The happy words I chose came from at least 50 times of using by both genders. We could observe that there is a stong skewness in words like "movie","gym", "boyfriend" and "video games" are more from female whereas "son", "colleagues" and "discussions"  are more likely from male.  
+```{r, warning=FALSE}
+hm_gender <- hm_data[hm_data$gender != "o" ,]
+
+m_f_counts <- hm_gender %>%
+  count(gender, text) %>%
+  spread(gender, n, fill = 0) %>%
+  mutate(total = m + f,
+         m = (m + 1) / sum(m + 1),
+         f = (f + 1) / sum(f + 1),
+         log_ratio = log2(f / m),
+         abs_ratio = abs(log_ratio)) %>%
+  arrange(desc(log_ratio))
+```
+
+```{r,warning=FALSE}
+m_f_counts %>%
+  filter(!text %in% c("himself", "herself"),
+         total>= 50) %>%
+  group_by(direction = ifelse(log_ratio > 0, 'More male', "More female")) %>%
+  top_n(15, abs_ratio) %>%
+  ungroup() %>%
+  mutate(text = reorder(text, log_ratio)) %>%
+  ggplot(aes(text, log_ratio, fill = direction)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "",
+       y = 'Relative appearance for male compared to female',
+       fill = "",
+       title = "Words correlated with gender in 10,000 plot descriptions",
+       subtitle = "Words with at least 50 uses by male/female.") +
+  scale_y_continuous(labels = c("4X", "2X", "Same", "2X"),
+                     breaks = seq(-2, 1)) +
+  guides(fill = guide_legend(reverse = TRUE))
+```
+
+### Stories About Parenthood
+Reference: https://www.tidytextmining.com/twitter.html
+
+The two distictive groups have great difference in their happy moments. People who do not have child talk in diverse words such as girlfriend, roommate, game and deadlift, while people with children talk a lot about grandchildren, son, daughter, daddy etc. It quite makes sense that people with children have a lot of happy moments with their children and people without have other things that make them happy.
+```{r bag of words, warning=FALSE, message=FALSE}
+# Create a bag of words using the text data
+bag_of_words <-  hm_data %>%
+  unnest_tokens(word, text)
+
+# Count frequency of each word
+word_count <- bag_of_words %>%
+  count(word, sort = TRUE)
+```
+
+```{r, warning=FALSE}
+# Calculate word frequency for each parenthood category
+frequency <- bag_of_words %>% 
+  group_by(parenthood) %>% 
+  count(word, sort = TRUE) %>% 
+  left_join(bag_of_words %>% 
+              group_by(parenthood) %>% 
+              summarise(total = n())) %>%
+  mutate(freq = n/total)
+
+frequency <- frequency %>% 
+  select(parenthood, word, freq) %>% 
+  spread(parenthood, freq) %>%
+  arrange(y, n)
+
+# Scatter plot of word frequency from "yes" and "no" group
+ggplot(frequency,aes(y, n)) +
+  geom_jitter(alpha = 0.1, size = 2.5, width = 0.25, height = 0.25) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  geom_abline(color = "red")
+```
+
+### Interesting Words By Marital
+
+#### Supervised topic modeling with TF-IDF 
 Reference: https://www.kaggle.com/rtatman/nlp-in-r-topic-modelling
 
-In HappyDB, we have labeled data, so I used supervised topic modeling with TF-IDF (term frequency-inverse document frequency). The general idea behind how TF-IDF works is this:
+In HappyDB with labeled data, I used supervised topic modeling with TF-IDF (term frequency-inverse document frequency). The general idea behind how TF-IDF works is this:
 
 - Words that are very common in a specific document are probably important to the topic of that document
 - Words that are very common in all documents probably aren't important to the topics of any of them
 
-So a term will recieve a high weight if it's common in a specific document and also uncommon across all documents.
+So a term will recieve a high weight if it's common in a specific document and also uncommon across all documents. The reason I used TF-IDF is because this method works quite well when a variable has many categories. In the analysis of marrital status (5 groups) and age (I subgrouped it with 6 levels), TF-IDF yields a good result.
+
+The marital status contains five categories (divorced, married, separated, single and windowed). We could observe distinctive top words people are using. Divorced group has a lot of happy moments coming from finance, conversations and weekend. Married couples have many physchological happy moments with their spouse and memorable events. Separated group tends to have happy moments in shopping (Tommy), resturant and stock trading. Single group also focus on finance. Also, they mentioned a lot about semester. grandma, which may indicate a great proportion would be students. Widowed group does not have a focused topic in their top words and it might becasue of an relevant small sample size.
 ```{r}
 # function that takes in a dataframe and the name of the columns
 # with the document texts and the topic labels. If plot is set to
@@ -191,20 +295,20 @@ top_terms_by_topic_tfidf <- function(text_df, text_column, group_column, plot = 
 }
 ```
 
-
-#### Informative descriptive words by gender
 ```{r}
-top_terms_by_topic_tfidf(text_df = hm_data, # dataframe
-                         text_column = text, # column with text
-                         group_column = gender, # column with topic label
-                         plot = T) # return a plot
+top_terms_by_topic_tfidf(text_df = hm_data, 
+                         text_column = text, 
+                         group_column = marital, 
+                         plot = T) 
 ```
-From the extraction of the most frequently used terms by TF-IDF, We could directly observe that both males and females love pets (puppy) and they are both happy about childhood. While Females feel very happy about something in photos and males have fun moments with colleagues, with the key words extraction from the processed text, we could not tell an evident difference between males and females happy moments.
 
-#### Informative descriptive words by age group
-Divide ages to groups
+### DIY Observations By Age Group
+
+I used a common division criteria, 10 years old, in separating ages into 6 groups. The 0~19 group seems a majority of students in which their happy moments contain busboy and midterm. People greater than 20 years old share the common happy moments with the most outstanding "wife" word. Age groups in 50~59 and 60+ tend to mention granddaughter, grandchildren and grandkits a lot. This indeed makes sense that senior people's happy moments come a lot from their grandchildren.
+
+In the bar chart, we could see that the happyDB survey collects a majority of people whose ages are between 20 to 40 years old. The happy moments are not evenly distributed among our age groups. Therefore, some of the top-words extracted (eg. 60+ age group) might not represent accurately the happy topics people in that age groups are talking.
 ```{r,warning=FALSE}
-library(data.table)
+# Divide ages into subgroups
 
 hm_data$age <- as.numeric(hm_data$age)
 
@@ -223,49 +327,15 @@ top_terms_by_topic_tfidf(text_df = hm_data,
                          group_column = agegroups, 
                          plot = T) 
 ```
-I used a common division criteria, 10 years old, in separating ages into 6 groups. The 0~19 group seems a majority of students in which their happy moments contain busboy and midterm. People greater than 20 years old share the common happy moments with the most outstanding "wife" word. Age groups in 50~59 and 60+ tend to mention granddaughter, grandchildren and grandkits a lot. This indeed makes sense that senior people's happy moments come a lot from their grandchildren.
 
 
 ```{r}
 ggplot(data=hm_data, aes(x=predicted_category,fill = agegroups)) +
     geom_bar(stat="count")
 ```
-In the bar chart, we could see that the happyDB survey collects a majority of people whose ages are between 20 to 40 years old. The happy moments are not evenly distributed among our age groups. Therefore, some of the top-words extracted (eg. 60+ age group) might not represent accurately the happy topics people in that age groups are talking.
 
-
-#### Informative descriptive words by marital
-```{r}
-top_terms_by_topic_tfidf(text_df = hm_data, 
-                         text_column = text, 
-                         group_column = marital, 
-                         plot = T) 
-```
-The marital status contains five categories (divorced, married, separated, single and windowed). We could observe distinctive top words people are using. Divorced group has a lot of happy moments coming from finance, conversations and weekend. Married couples have many physchological happy moments with their spouse and memorable events. Separated group tends to have happy moments in shopping (Tommy), resturant and stock trading. Single group also focus on finance. Also, they mentioned a lot about semester. grandma, which may indicate a great proportion would be students. Widowed group does not have a focused topic in their top words and it might becasue of an relevant small sample size.
-
-```{r}
-ggplot(data=hm_data, aes(x=predicted_category,fill = marital)) +
-    geom_bar(stat="count")
-```
-In the bar chart, we could see that generally people in each marital status group have similar proportion distribution in the predicted category. One interesting notice is that married couples have a larger proportion in affection than achievement. It makes sense that married people tend to have happy moments with their spouse.
-
-#### Informative descriptive words by parenthood
-```{r}
-top_terms_by_topic_tfidf(text_df = hm_data, 
-                         text_column = text, 
-                         group_column = parenthood, 
-                         plot = T) 
-```
-The two distictive groups have great difference in their happy moments. People who do not have child talk in diverse topics such as fraternity, wifi, twitching and friend, while people with children talk a lot about grandchildren, hungary, daddy etc. It quite makes sense that people with children have a lot of happy moments with their children and people without have other things that make them happy.
-
-
-```{r}
-ggplot(data=hm_data, aes(x=predicted_category,fill = parenthood)) +
-    geom_bar(stat="count")
-```
-From the bar chart we could observe that the achievement proportion of parenthood group is much less than that in affection group. And the nature proportion becomes larger than the exercise proportion. One possible explanation might be that people with children tend to have less time to go to the gym, but they are more likely to go to picnics, parks and hiking with their children.
-
-## Conclusion
-The EDA of the happyDB just scratch the surface of people's happy moments. A lot of interesting patterns are found in this dataset. Since the survey sample size is around 10000 in which some of the groups such as 0~20 age group, 60+ age group, divorced group, separated group and widowed group do not contain a large enough size, the inference in these small sample-size groups need to be further varified and researched. More detailed information and interesting facets are also encouraged to explore.
+### Conclusion
+The EDA of the happyDB just scratches the surface of people's happy moments. A lot of interesting patterns are found in this dataset. Since the survey sample size is around 10000 in which some of the groups such as 0~20 age group, 60+ age group, divorced group, separated group and widowed group do not contain a large enough size, the inference in these small sample-size groups need to be further varified and researched. More detailed information and interesting facets are also encouraged to explore.
 
 Lastly, I also find some moments are worth reading especially about "Boss" and "someone". I listed several of them below.
 
@@ -280,3 +350,5 @@ Someone:
 - On the train this morning, someone told me I had a nice smile.
 - Someone who I admire in my school program told me that they thought I was very intelligent, warm, and funny.
 - Someone at the store gave me fifty cents to cover the difference in money I didn't have from forgetting my wallet at home.
+
+
