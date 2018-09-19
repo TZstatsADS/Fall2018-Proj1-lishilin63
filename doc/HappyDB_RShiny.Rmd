@@ -39,7 +39,7 @@ library(shiny)
 We use the processed data for our analysis and combine it with the demographic information available.
 
 ```{r load data, warning=FALSE, message=FALSE}
-hm_data <- read_csv("../output/processed_moments.csv")
+hm_data <- read_csv("processed_moments.csv")
 
 urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv'
 demo_data <- read_csv(urlfile)
